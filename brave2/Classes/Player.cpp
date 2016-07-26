@@ -23,6 +23,7 @@ bool Player::initWithPlayerType(PlayerType type)
 	_type = type;
 	int animationFrameNum[5] = { 4, 4, 4, 2, 4 };
 	int animationFrameNum2[5] = { 3, 3, 3, 2, 0 };
+	_speed = 100;
 
 	//根据英雄的类别来初始化
 	switch (type)
@@ -98,6 +99,17 @@ void Player::addAnimation()
 //播放第几个动画
 void Player::playAnimationForever(int index)
 {
+	//如果以前已经加载过，那么不再重复加载
+	auto act = this->getActionByTag(index);
+	if (act)
+		return;
+
+	//如果没有加载过，先停止播放动画
+	for (int i = 0; i<5; i++)
+	{
+		this->stopActionByTag(i);
+	}
+
 	//防御式编程，非常好的习惯
 	if (index <0 || index >= _animationNum)
 	{
@@ -111,15 +123,14 @@ void Player::playAnimationForever(int index)
 	
 	//播放动画
 	auto animate = RepeatForever::create(Animate::create(animation));
+	animate->setTag(index);
 	this->runAction(animate);
 }
 
 
 void Player::walkTo(Vec2 dest)
 {
-	//停掉当前的序列帧动画
-	if (_seq)
-		this->stopAction(_seq);
+	this->stopActionByTag(WALKTO_TAG);
 
 
 	auto curPos = this->getPosition();
@@ -136,16 +147,16 @@ void Player::walkTo(Vec2 dest)
 
 	//_seq，先移动，移动完成删除_seq
 	auto move = MoveTo::create(time, dest);
+	
+	//lambda function
 	auto func = [&]()
 	{
 		this->stopAllActions();
-		_seq = nullptr;
 	};
 	auto callback = CallFunc::create(func);
-	_seq = Sequence::create(move, callback, nullptr);
-	
-	//播放帧动画
-	this->runAction(_seq);
+	auto seq = Sequence::create(move, callback, nullptr);
+	seq->setTag(WALKTO_TAG);
+	this->runAction(seq);
 	this->playAnimationForever(0);
 
 }

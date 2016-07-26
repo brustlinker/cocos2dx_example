@@ -15,6 +15,11 @@ public:
 		ENEMY2
 	};
 
+	enum ActionTag
+	{
+		WALKTO_TAG = 100
+	};
+
 	bool initWithPlayerType(PlayerType type);
 
 	static Player* create(PlayerType type);
@@ -33,7 +38,6 @@ private:
 	vector<int>  _animationFrameNum;
 	vector<string> _animationNames;
 	float        _speed;
-	Sequence*    _seq;
 
 };
 
