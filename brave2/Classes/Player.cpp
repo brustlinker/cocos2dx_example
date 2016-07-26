@@ -1,31 +1,15 @@
 ﻿#include "Player.h"
 
 
-Player* Player::create(PlayerType type)
-{
-	Player* player = new Player();
-	if (player && player->initWithPlayerType(type))
-	{
-		player->autorelease();
-		return player;
-	}
-	else
-	{
-		delete player;
-		player = NULL;
-		return NULL;
-	}
-}
-
 bool Player::initWithPlayerType(PlayerType type)
 {
 	std::string sfName = "";
 	_type = type;
+	_speed = 100;
 	int animationFrameNum[5] = { 4, 4, 4, 2, 4 };
 	int animationFrameNum2[5] = { 3, 3, 3, 2, 0 };
-	_speed = 100;
 
-	//根据英雄的类别来初始化
+	//setup according to PlayerType
 	switch (type)
 	{
 	case PlayerType::PLAYER:
@@ -48,116 +32,132 @@ bool Player::initWithPlayerType(PlayerType type)
 		_animationFrameNum.assign(animationFrameNum2, animationFrameNum2 + 5);
 		break;
 	}
-
-	//设置默认序列帧
 	this->initWithSpriteFrameName(sfName);
-
-	string animationNames[] = { "walk", "attack", "dead", "hit", "skill" };
+	std::string animationNames[] = { "walk", "attack", "dead", "hit", "skill" };
 	_animationNames.assign(animationNames, animationNames + 5);
-
-
-	//添加动画
+	//load animation
 	this->addAnimation();
+
+	this->initFSM();
 
 	return true;
 }
 
 
+Player* Player::create(PlayerType type)
+{
+	Player* player = new Player();
+	if (player && player->initWithPlayerType(type))
+	{
+		player->autorelease();
+		return player;
+	}
+	else
+	{
+		delete player;
+		player = NULL;
+		return NULL;
+	}
+}
+
+
 void Player::addAnimation()
 {
-	// 检测动画是否已经添加到动画缓存当中
+	// check if already loaded
 	auto animation = AnimationCache::getInstance()->getAnimation(String::createWithFormat("%s-%s", _name.c_str(),
 		_animationNames[0])->getCString());
 	if (animation)
 		return;
 
-
-	//每个动画
 	for (int i = 0; i<_animationNum; i++)
 	{
 		auto animation = Animation::create();
 		animation->setDelayPerUnit(0.2f);
-		//动画的一个序列帧
+		//put frames into animation
 		for (int j = 0; j< _animationFrameNum[i]; j++)
 		{
-			//这是一种比较快捷的方式
-			//一个样例：player1 - 3 - 2.png
 			auto sfName = String::createWithFormat("%s-%d-%d.png", _name.c_str(), i + 1, j + 1)->getCString();
+			//			log(sfName);
 			animation->addSpriteFrame(SpriteFrameCache::getInstance()->getSpriteFrameByName(sfName));
 		}
-
-		// 将 animation 保存到缓存当中
-		//一个样例：player1-walk
+		// put the animation into cache
 		AnimationCache::getInstance()->addAnimation(animation, String::createWithFormat("%s-%s", _name.c_str(),
 			_animationNames[i].c_str())->getCString());
 	}
-
-
 }
 
 
-//播放第几个动画
 void Player::playAnimationForever(int index)
 {
-	//如果以前已经加载过，那么不再重复加载
 	auto act = this->getActionByTag(index);
 	if (act)
 		return;
 
-	//如果没有加载过，先停止播放动画
 	for (int i = 0; i<5; i++)
 	{
 		this->stopActionByTag(i);
 	}
-
-	//防御式编程，非常好的习惯
 	if (index <0 || index >= _animationNum)
 	{
 		log("illegal animation index!");
 		return;
 	}
-	//一个样例：“player1-walk”
 	auto str = String::createWithFormat("%s-%s", _name.c_str(), _animationNames[index].c_str())->getCString();
-	//从animation的缓存当中获取animation
 	auto animation = AnimationCache::getInstance()->getAnimation(str);
-	
-	//播放动画
 	auto animate = RepeatForever::create(Animate::create(animation));
 	animate->setTag(index);
 	this->runAction(animate);
 }
 
-
 void Player::walkTo(Vec2 dest)
 {
-	this->stopActionByTag(WALKTO_TAG);
+	std::function<void()> onWalk = CC_CALLBACK_0(Player::onWalk, this, dest);
+	_fsm->setOnEnter("walking", onWalk);
+	_fsm->doEvent("walk");
+}
 
+void Player::initFSM()
+{
+	_fsm = FSM::create("idle");
+	_fsm->retain();
+	auto onIdle = [&]()
+	{
+		log("onIdle: Enter idle");
+		this->stopActionByTag(0);
+	};
+
+	_fsm->setOnEnter("idle", onIdle);
+}
+
+void Player::onWalk(Vec2 dest)
+{
+	log("onIdle: Enter walk");
+
+	this->stopActionByTag(WALKTO_TAG);
 
 	auto curPos = this->getPosition();
 
-	//如果向后移动，那么反转
 	if (curPos.x > dest.x)
-		 this->setFlippedX(true);
+		this->setFlippedX(true);
 	else
-		 this->setFlippedX(false);
-	
-	//计算移动需要的时间
+		this->setFlippedX(false);
+
 	auto diff = dest - curPos;
 	auto time = diff.getLength() / _speed;
-
-	//_seq，先移动，移动完成删除_seq
 	auto move = MoveTo::create(time, dest);
-	
-	//lambda function
 	auto func = [&]()
 	{
-		this->stopAllActionsByTag(0);
+		this->_fsm->doEvent("stop");
 	};
 	auto callback = CallFunc::create(func);
 	auto seq = Sequence::create(move, callback, nullptr);
 	seq->setTag(WALKTO_TAG);
 	this->runAction(seq);
 	this->playAnimationForever(0);
-
 }
 
+void Player::onExit()
+{
+	Sprite::onExit();
+	_fsm->release();
+}
