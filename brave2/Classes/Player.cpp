@@ -151,7 +151,7 @@ void Player::walkTo(Vec2 dest)
 	//lambda function
 	auto func = [&]()
 	{
-		this->stopAllActions();
+		this->stopAllActionsByTag(0);
 	};
 	auto callback = CallFunc::create(func);
 	auto seq = Sequence::create(move, callback, nullptr);
